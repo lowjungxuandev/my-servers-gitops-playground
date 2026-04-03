@@ -97,6 +97,19 @@ expose_argocd_server() {
     "{\"spec\":{\"type\":\"NodePort\",\"ports\":[{\"name\":\"https\",\"port\":443,\"protocol\":\"TCP\",\"targetPort\":8080,\"nodePort\":$ARGOCD_SERVER_NODEPORT}]}}"
 }
 
+start_argocd_host_proxy() {
+  local cluster_ip
+
+  cluster_ip="$(docker exec -i "$CONTROL_PLANE_NODE" bash -lc \
+    "export KUBECONFIG=/etc/kubernetes/admin.conf; kubectl -n $ARGOCD_NAMESPACE get svc argocd-server -o jsonpath='{.spec.clusterIP}'")"
+
+  docker exec -i "$CONTROL_PLANE_NODE" bash -lc "
+    pkill -f 'socat TCP-LISTEN:$ARGOCD_SERVER_NODEPORT' >/dev/null 2>&1 || true
+    nohup socat TCP-LISTEN:$ARGOCD_SERVER_NODEPORT,fork,reuseaddr TCP:$cluster_ip:443 \
+      >/var/log/argocd-port-proxy.log 2>&1 &
+  "
+}
+
 restart_argocd_controller() {
   kubectl_on_control_plane -n "$ARGOCD_NAMESPACE" delete pod argocd-application-controller-0 --ignore-not-found=true
 }
@@ -139,9 +152,8 @@ bootstrap_gitops_if_present() {
     return
   fi
 
-  docker cp "$ARGOCD_BOOTSTRAP_MANIFEST" "$CONTROL_PLANE_NODE:/tmp/argocd-bootstrap.yaml"
   docker exec -i "$CONTROL_PLANE_NODE" bash -lc \
-    "export KUBECONFIG=/etc/kubernetes/admin.conf; kubectl apply -f /tmp/argocd-bootstrap.yaml"
+    "export KUBECONFIG=/etc/kubernetes/admin.conf; kubectl apply -f -" < "$ARGOCD_BOOTSTRAP_MANIFEST"
 
   echo
   echo "Applied GitOps bootstrap manifest:"
@@ -154,6 +166,7 @@ install_argocd
 pin_argocd_to_infrastructure
 set_argocd_pull_policy
 expose_argocd_server
+start_argocd_host_proxy
 restart_argocd_controller
 wait_for_argocd
 print_admin_password
