@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONTROL_PLANE_NODE="${1:-cluster-node}"
+COREDNS_IMAGE="registry.k8s.io/coredns/coredns:v1.14.2"
 
 reset_control_plane() {
   local node="$1"
@@ -48,6 +49,7 @@ apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 cgroupDriver: cgroupfs
 failSwapOn: false
+resolvConf: /etc/kubernetes-resolv.conf
 EOF
 
   kubeadm init \
@@ -59,8 +61,22 @@ docker exec "$CONTROL_PLANE_NODE" bash -lc '
   timeout 180 sh -c "until curl -sk https://127.0.0.1:6443/healthz >/dev/null; do sleep 2; done"
   mkdir -p /root/.kube
   cp /etc/kubernetes/admin.conf /root/.kube/config
+  KUBECONFIG=/etc/kubernetes/admin.conf kubectl -n kube-system get configmap kube-proxy -o yaml \
+    | sed "s/maxPerCore: null/maxPerCore: 0/" \
+    | sed "s/min: null/min: 0/" \
+    | KUBECONFIG=/etc/kubernetes/admin.conf kubectl apply -f -
+  KUBECONFIG=/etc/kubernetes/admin.conf kubectl -n kube-system rollout restart daemonset/kube-proxy
   KUBECONFIG=/etc/kubernetes/admin.conf kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 '
+
+docker exec "$CONTROL_PLANE_NODE" bash -lc "
+  export KUBECONFIG=/etc/kubernetes/admin.conf
+  kubectl -n kube-system set image deployment/coredns coredns=$COREDNS_IMAGE
+  kubectl -n kube-system get configmap coredns -o yaml \
+    | sed 's#forward \\. /etc/resolv.conf {#forward . 1.1.1.1 8.8.8.8 {#' \
+    | kubectl apply -f -
+  kubectl -n kube-system rollout restart deployment/coredns
+"
 
 docker exec "$CONTROL_PLANE_NODE" bash -lc 'KUBECONFIG=/etc/kubernetes/admin.conf kubeadm token create --print-join-command' \
   | tr -d '\r' \
