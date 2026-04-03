@@ -3,29 +3,20 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CONTROL_PLANE_NODE="${1:-cluster-node}"
-COREDNS_IMAGE="registry.k8s.io/coredns/coredns:v1.14.2"
+# shellcheck source=scripts/common.sh
+source "$SCRIPT_DIR/common.sh"
 
-reset_control_plane() {
-  local node="$1"
-  docker exec "$node" bash -lc '
-    set -euo pipefail
-    pkill kubelet || true
+control_plane_node="${1:-$CONTROL_PLANE_NODE}"
+control_plane_ip="$(node_ip "$control_plane_node")"
 
-    kubeadm reset -f || true
-    rm -rf /etc/cni/net.d/* /var/lib/cni/* /var/lib/etcd/*
-    rm -f /etc/kubernetes/*.conf
-    rm -f /var/lib/kubelet/config.yaml /var/lib/kubelet/instance-config.yaml /var/lib/kubelet/kubeadm-flags.env
-  '
-}
-
-reset_control_plane "$CONTROL_PLANE_NODE"
-
-CONTROL_PLANE_IP="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTROL_PLANE_NODE")"
-
-docker exec "$CONTROL_PLANE_NODE" bash -lc "
-  cat >/root/kubeadm-init.yaml <<EOF
+write_kubeadm_config() {
+  docker exec -i \
+    -e CONTROL_PLANE_NODE="$control_plane_node" \
+    -e CONTROL_PLANE_IP="$control_plane_ip" \
+    -e KUBERNETES_RELEASE_CHANNEL="$KUBERNETES_RELEASE_CHANNEL" \
+    "$control_plane_node" \
+    bash -s <<'EOF'
+cat >/root/kubeadm-init.yaml <<EOF_CONFIG
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: InitConfiguration
 localAPIEndpoint:
@@ -37,7 +28,7 @@ nodeRegistration:
 ---
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
-kubernetesVersion: stable-1.35
+kubernetesVersion: $KUBERNETES_RELEASE_CHANNEL
 apiServer:
   certSANs:
     - 127.0.0.1
@@ -50,42 +41,68 @@ kind: KubeletConfiguration
 cgroupDriver: cgroupfs
 failSwapOn: false
 resolvConf: /etc/kubernetes-resolv.conf
+EOF_CONFIG
 EOF
+}
 
-  kubeadm init \
-    --config /root/kubeadm-init.yaml \
-    --ignore-preflight-errors=NumCPU,Mem,Swap,SystemVerification,ContainerRuntimeVersion
-"
+initialize_control_plane() {
+  docker exec -i "$control_plane_node" bash -s <<'EOF'
+set -euo pipefail
+kubeadm init \
+  --config /root/kubeadm-init.yaml \
+  --ignore-preflight-errors=NumCPU,Mem,Swap,SystemVerification,ContainerRuntimeVersion
+EOF
+}
 
-docker exec "$CONTROL_PLANE_NODE" bash -lc '
-  timeout 180 sh -c "until curl -sk https://127.0.0.1:6443/healthz >/dev/null; do sleep 2; done"
+configure_cluster_addons() {
+  docker exec -i \
+    -e FLANNEL_MANIFEST_URL="$FLANNEL_MANIFEST_URL" \
+    -e COREDNS_IMAGE="$COREDNS_IMAGE" \
+    "$control_plane_node" \
+    bash -s <<'EOF'
+set -euo pipefail
+export KUBECONFIG=/etc/kubernetes/admin.conf
+
+timeout 180 sh -c "until curl -sk https://127.0.0.1:6443/healthz >/dev/null; do sleep 2; done"
   mkdir -p /root/.kube
   cp /etc/kubernetes/admin.conf /root/.kube/config
-  KUBECONFIG=/etc/kubernetes/admin.conf kubectl -n kube-system get configmap kube-proxy -o yaml \
+  kubectl -n kube-system get configmap kube-proxy -o yaml \
     | sed "s/maxPerCore: null/maxPerCore: 0/" \
     | sed "s/min: null/min: 0/" \
-    | KUBECONFIG=/etc/kubernetes/admin.conf kubectl apply -f -
-  KUBECONFIG=/etc/kubernetes/admin.conf kubectl -n kube-system rollout restart daemonset/kube-proxy
-  KUBECONFIG=/etc/kubernetes/admin.conf kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
-'
-
-docker exec "$CONTROL_PLANE_NODE" bash -lc "
-  export KUBECONFIG=/etc/kubernetes/admin.conf
-  kubectl -n kube-system set image deployment/coredns coredns=$COREDNS_IMAGE
+    | kubectl apply -f -
+  kubectl -n kube-system rollout restart daemonset/kube-proxy
+  kubectl apply -f "$FLANNEL_MANIFEST_URL"
+  kubectl -n kube-system set image deployment/coredns coredns="$COREDNS_IMAGE"
   kubectl -n kube-system get configmap coredns -o yaml \
     | sed 's#forward \\. /etc/resolv.conf {#forward . 1.1.1.1 8.8.8.8 {#' \
     | kubectl apply -f -
   kubectl -n kube-system rollout restart deployment/coredns
-"
+EOF
+}
 
-docker exec "$CONTROL_PLANE_NODE" bash -lc 'KUBECONFIG=/etc/kubernetes/admin.conf kubeadm token create --print-join-command' \
-  | tr -d '\r' \
-  | sed 's#$# --cri-socket unix:///run/containerd/containerd.sock#' \
-  > "$PROJECT_DIR/join-command.txt"
+write_cluster_access_files() {
+  docker exec -i "$control_plane_node" bash -s <<'EOF' \
+    | tr -d '\r' \
+    | sed 's#$# --cri-socket unix:///run/containerd/containerd.sock#' \
+    > "$JOIN_COMMAND_FILE"
+set -euo pipefail
+export KUBECONFIG=/etc/kubernetes/admin.conf
+kubeadm token create --print-join-command
+EOF
 
-docker exec "$CONTROL_PLANE_NODE" bash -lc 'cat /etc/kubernetes/admin.conf' \
-  | sed "s#https://$CONTROL_PLANE_IP:6443#https://127.0.0.1:6443#g" \
-  > "$PROJECT_DIR/kubeconfig.yaml"
+  docker exec -i "$control_plane_node" bash -s <<'EOF' \
+    | sed "s#https://$control_plane_ip:6443#https://127.0.0.1:6443#g" \
+    > "$LOCAL_KUBECONFIG_FILE"
+set -euo pipefail
+cat /etc/kubernetes/admin.conf
+EOF
+}
 
-echo "Control plane initialized on $CONTROL_PLANE_NODE"
-echo "Join command saved to $PROJECT_DIR/join-command.txt"
+reset_control_plane_node "$control_plane_node"
+write_kubeadm_config
+initialize_control_plane
+configure_cluster_addons
+write_cluster_access_files
+
+echo "Control plane initialized on $control_plane_node"
+echo "Join command saved to $JOIN_COMMAND_FILE"

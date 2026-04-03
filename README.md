@@ -20,7 +20,9 @@ Topology:
 ## Main Files
 
 - `docker-compose.yml`: Ubuntu node definitions and exposed ports
-- `scripts/start-infra.sh`: starts the Ubuntu containers and installs node dependencies on all servers
+- `scripts/common.sh`: shared constants and helper functions used by all scripts
+- `scripts/bootstrap-node.sh`: installs containerd, kubeadm, kubelet, kubectl, and node runtime settings inside each container
+- `scripts/start-infra.sh`: starts the Ubuntu containers and bootstraps all nodes in parallel
 - `scripts/init-control-plane.sh`: initializes the Kubernetes control plane
 - `scripts/join-workers.sh`: joins the worker nodes to the cluster
 - `gitops/bootstrap/root-application.yaml`: app-of-apps entrypoint
@@ -37,16 +39,11 @@ Topology:
 
 ## Quick Start
 
-Run the infrastructure startup first:
+Run the scripts in this order:
 
 ```bash
 cd "/Users/jungxuanlow/Desktop/My Servers"
 ./scripts/start-infra.sh
-```
-
-Then continue with:
-
-```bash
 ./scripts/init-control-plane.sh
 ./scripts/join-workers.sh
 ```
@@ -55,7 +52,14 @@ This will:
 
 - start the three Ubuntu containers
 - install the node prerequisites
-- initialize the Kubernetes cluster
+- initialize the control plane
+- join the worker nodes
+
+## Script Flow
+
+- `start-infra.sh`: container lifecycle plus shared node bootstrap
+- `init-control-plane.sh`: `kubeadm init`, flannel, kube-proxy, and CoreDNS bootstrap
+- `join-workers.sh`: `kubeadm join`, node labels, and final readiness checks
 
 ## Argo CD Dashboard
 
