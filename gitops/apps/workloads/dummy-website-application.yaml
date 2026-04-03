@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dummy-website
+  namespace: argocd
+spec:
+  project: workloads
+  source:
+    repoURL: https://github.com/lowjungxuandev/my-servers-gitops-playground.git
+    targetRevision: main
+    path: gitops/manifests/workloads/dummy-website
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

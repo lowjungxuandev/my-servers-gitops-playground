@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dummy-website-html
+  namespace: demo
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <title>My Servers Demo</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 3rem; background: #f4f7fb; color: #162033; }
+        .card { max-width: 720px; background: white; padding: 2rem; border-radius: 16px; box-shadow: 0 18px 50px rgba(0,0,0,.08); }
+        h1 { margin-top: 0; }
+        code { background: #eef2ff; padding: 0.2rem 0.4rem; border-radius: 6px; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>Dummy Website</h1>
+        <p>This workload is deployed by Argo CD onto <code>application-node</code>.</p>
+        <p>The cluster topology is 1 control plane and 2 workers.</p>
+      </div>
+    </body>
+    </html>

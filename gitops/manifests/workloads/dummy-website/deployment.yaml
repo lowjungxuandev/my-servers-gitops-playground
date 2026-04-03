@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dummy-website
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dummy-website
+  template:
+    metadata:
+      labels:
+        app: dummy-website
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: application-node
+      containers:
+        - name: nginx
+          image: nginx:stable-alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: site-content
+              mountPath: /usr/share/nginx/html
+      volumes:
+        - name: site-content
+          configMap:
+            name: dummy-website-html
