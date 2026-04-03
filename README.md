@@ -4,28 +4,25 @@ This project is a local Kubernetes playground built from three Ubuntu Docker con
 
 Topology:
 
-- `ubuntu-server-1`: upstream Kubernetes control plane
-- `ubuntu-server-2`: worker node for the dummy website
-- `ubuntu-server-3`: worker node for Prometheus and Grafana
+- `cluster-node`: upstream Kubernetes control plane
+- `application-node`: worker node for the dummy website
+- `infrastructure-node`: worker node for Prometheus and Grafana
 
 ## What This Includes
 
 - Three Ubuntu containers created by Docker Compose
 - An upstream Kubernetes cluster built with `kubeadm`, `kubelet`, and `kubectl`
 - Argo CD as the GitOps controller
-- A dummy website deployed on `ubuntu-server-2`
-- `kube-prometheus-stack` with Grafana and Prometheus on `ubuntu-server-3`
+- A dummy website deployed on `application-node`
+- `kube-prometheus-stack` with Grafana and Prometheus on `infrastructure-node`
 - Host port mappings for the Kubernetes API and dashboards
 
 ## Main Files
 
 - `docker-compose.yml`: Ubuntu node definitions and exposed ports
-- `start.sh`: starts the Ubuntu containers
-- `scripts/recreate-nodes.sh`: recreates the three Ubuntu nodes
-- `scripts/install-kubernetes-cluster.sh`: installs upstream Kubernetes with `kubeadm`
-- `scripts/bootstrap-argocd.sh`: installs Argo CD and applies the root app
-- `scripts/bootstrap-lab.sh`: full bootstrap for the lab
-- `scripts/get-argocd-admin-password.sh`: prints the Argo CD admin password
+- `scripts/start-infra.sh`: starts the Ubuntu containers and installs node dependencies on all servers
+- `scripts/init-control-plane.sh`: initializes the Kubernetes control plane
+- `scripts/join-workers.sh`: joins the worker nodes to the cluster
 - `gitops/bootstrap/root-application.yaml`: app-of-apps entrypoint
 - `gitops/apps/`: Argo CD applications
 - `gitops/manifests/dummy-website/`: Git-managed demo workload
@@ -40,19 +37,25 @@ Topology:
 
 ## Quick Start
 
-Run the full bootstrap:
+Run the infrastructure startup first:
 
 ```bash
 cd "/Users/jungxuanlow/Desktop/My Servers"
-./scripts/bootstrap-lab.sh
+./scripts/start-infra.sh
+```
+
+Then continue with:
+
+```bash
+./scripts/init-control-plane.sh
+./scripts/join-workers.sh
 ```
 
 This will:
 
-- recreate the three Ubuntu containers
-- install the Kubernetes cluster
-- install Argo CD
-- apply the GitOps root application
+- start the three Ubuntu containers
+- install the node prerequisites
+- initialize the Kubernetes cluster
 
 ## Argo CD Dashboard
 
@@ -68,32 +71,26 @@ Username:
 admin
 ```
 
-Get the initial password:
-
-```bash
-./scripts/get-argocd-admin-password.sh
-```
-
 ## Useful Commands
 
 Open shells:
 
 ```bash
-docker exec -it ubuntu-server-1 bash
-docker exec -it ubuntu-server-2 bash
-docker exec -it ubuntu-server-3 bash
+docker exec -it cluster-node bash
+docker exec -it application-node bash
+docker exec -it infrastructure-node bash
 ```
 
 Check cluster nodes:
 
 ```bash
-docker exec ubuntu-server-1 kubectl get nodes -o wide
+docker exec cluster-node kubectl get nodes -o wide
 ```
 
 Check Argo CD apps:
 
 ```bash
-docker exec ubuntu-server-1 kubectl -n argocd get applications
+docker exec cluster-node kubectl -n argocd get applications
 ```
 
 Stop everything:

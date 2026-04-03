@@ -20,7 +20,7 @@ data:
     <body>
       <div class="card">
         <h1>Dummy Website</h1>
-        <p>This workload is deployed by Argo CD onto <code>ubuntu-server-2</code>.</p>
+        <p>This workload is deployed by Argo CD onto <code>application-node</code>.</p>
         <p>The cluster topology is 1 control plane and 2 workers.</p>
       </div>
     </body>

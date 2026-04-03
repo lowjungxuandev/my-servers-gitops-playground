@@ -1,8 +1,8 @@
 services:
-  ubuntu-server-1:
+  cluster-node:
     image: ubuntu:latest
-    container_name: ubuntu-server-1
-    hostname: ubuntu-server-1
+    container_name: cluster-node
+    hostname: cluster-node
     privileged: true
     command: ["/bin/bash", "-lc", "while true; do sleep 3600; done"]
     tty: true
@@ -12,7 +12,7 @@ services:
       - /run/lock
       - /tmp
     volumes:
-      - ./server-1:/srv/server
+      - ./cluster-node:/srv/server
       - /lib/modules:/lib/modules:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     ports:
@@ -22,10 +22,10 @@ services:
       - "9090:30090"
       - "8081:30081"
 
-  ubuntu-server-2:
+  application-node:
     image: ubuntu:latest
-    container_name: ubuntu-server-2
-    hostname: ubuntu-server-2
+    container_name: application-node
+    hostname: application-node
     privileged: true
     command: ["/bin/bash", "-lc", "while true; do sleep 3600; done"]
     tty: true
@@ -35,14 +35,14 @@ services:
       - /run/lock
       - /tmp
     volumes:
-      - ./server-2:/srv/server
+      - ./application-node:/srv/server
       - /lib/modules:/lib/modules:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
 
-  ubuntu-server-3:
+  infrastructure-node:
     image: ubuntu:latest
-    container_name: ubuntu-server-3
-    hostname: ubuntu-server-3
+    container_name: infrastructure-node
+    hostname: infrastructure-node
     privileged: true
     command: ["/bin/bash", "-lc", "while true; do sleep 3600; done"]
     tty: true
@@ -52,6 +52,6 @@ services:
       - /run/lock
       - /tmp
     volumes:
-      - ./server-3:/srv/server
+      - ./infrastructure-node:/srv/server
       - /lib/modules:/lib/modules:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:rw

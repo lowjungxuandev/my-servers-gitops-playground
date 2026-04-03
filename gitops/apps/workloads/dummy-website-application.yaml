@@ -1,17 +1,17 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root-app-of-apps
+  name: dummy-website
   namespace: argocd
 spec:
-  project: default
+  project: workloads
   source:
     repoURL: https://github.com/lowjungxuandev/my-servers-gitops-playground.git
     targetRevision: main
-    path: gitops/root
+    path: gitops/manifests/workloads/dummy-website
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: demo
   syncPolicy:
     automated:
       prune: true

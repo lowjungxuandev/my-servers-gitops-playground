@@ -1,22 +1,23 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: monitoring
+  name: kube-prometheus-stack
   namespace: argocd
 spec:
-  project: default
+  project: infrastructure
   source:
     repoURL: https://prometheus-community.github.io/helm-charts
     chart: kube-prometheus-stack
     targetRevision: 69.8.2
     helm:
+      releaseName: kube-prometheus-stack
       values: |
         grafana:
           service:
             type: NodePort
             nodePort: 30300
           nodeSelector:
-            kubernetes.io/hostname: ubuntu-server-3
+            kubernetes.io/hostname: infrastructure-node
           adminPassword: admin
         prometheus:
           service:
@@ -24,17 +25,17 @@ spec:
             nodePort: 30090
           prometheusSpec:
             nodeSelector:
-              kubernetes.io/hostname: ubuntu-server-3
+              kubernetes.io/hostname: infrastructure-node
         alertmanager:
           alertmanagerSpec:
             nodeSelector:
-              kubernetes.io/hostname: ubuntu-server-3
+              kubernetes.io/hostname: infrastructure-node
         kube-state-metrics:
           nodeSelector:
-            kubernetes.io/hostname: ubuntu-server-3
+            kubernetes.io/hostname: infrastructure-node
         prometheus-node-exporter:
           nodeSelector:
-            kubernetes.io/hostname: ubuntu-server-3
+            kubernetes.io/hostname: infrastructure-node
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
